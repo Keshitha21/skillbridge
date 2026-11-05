@@ -1,81 +1,63 @@
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth'
 
+// Home page — kept intentionally simple and student-friendly.
+// Plain sections, no gradients or fancy effects, matches the rest of the app.
 export default function Home() {
   const { user } = useAuth()
   return (
     <>
-      {/* hero — same composition as the original static design */}
-      <section className="mb-14 grid items-center gap-10 md:grid-cols-2">
-        <div>
-          <p className="eyebrow">STUDENT SKILL EXCHANGE</p>
-          <h1 className="h-display text-[clamp(34px,5vw,52px)] leading-tight">
-            Build something great.<br />
-            <span className="text-brand">Build it together.</span>
-          </h1>
-          <p className="mt-4 max-w-md text-muted">
-            SkillBridge helps students find project teammates, exchange skills and turn ideas into real work.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            {user
-              ? <>
-                <Link className="btn-primary" to="/dashboard">Go to dashboard</Link>
-                <Link className="btn-secondary" to="/projects">Explore projects</Link>
-              </>
-              : <>
-                <Link className="btn-primary" to="/register">Get started</Link>
-                <Link className="btn-secondary" to="/projects">Explore projects</Link>
-              </>}
-          </div>
-          <p className="mt-5 text-sm text-muted">A student-first space for learning through collaboration.</p>
+      {/* simple intro */}
+      <section className="mb-10 max-w-2xl">
+        <h1 className="text-3xl font-bold text-ink">SkillBridge — a small site for student collaboration</h1>
+        <p className="mt-3 text-muted">
+          This is a student project: you can list your skills, find teammates for your project,
+          and plan work together. Login to try it out.
+        </p>
+        <div className="mt-5 flex flex-wrap gap-3">
+          {user
+            ? <>
+              <Link className="btn-primary" to="/dashboard">Go to dashboard</Link>
+              <Link className="btn-secondary" to="/projects">See projects</Link>
+            </>
+            : <>
+              <Link className="btn-primary" to="/register">Create an account</Link>
+              <Link className="btn-secondary" to="/login">Login</Link>
+            </>}
         </div>
-        <div className="relative grid place-items-center rounded-3xl bg-gradient-to-br from-soft to-white p-10">
-          <div className="absolute h-64 w-64 rounded-full border border-brand/15" />
-          <div className="absolute h-48 w-48 rounded-full border border-brand/10" />
-          <div className="relative w-[min(300px,80%)] rounded-2xl border border-line bg-white p-6 text-center shadow-card">
-            <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-[#4268ef] to-[#263fae] text-xl text-white">✦</div>
-            <strong className="block font-display text-ink">Great work happens together</strong>
-            <p className="mt-1 text-xs text-muted">Share skills · Find teammates · Build projects</p>
-            <div className="mt-4 flex justify-center -space-x-2">
-              {['AK', 'RM', 'PS', '+4'].map((s, i) => (
-                <span key={i} className="grid h-8 w-8 place-items-center rounded-full border-2 border-white bg-soft text-[10px] font-bold text-brand">{s}</span>
-              ))}
-            </div>
-          </div>
+        <p className="mt-3 text-xs text-muted">Built as a college mini-project · Spring Boot + React + MySQL</p>
+      </section>
+
+      {/* what you can do — three plain cards */}
+      <section className="mb-10">
+        <h2 className="text-xl font-bold text-ink">What you can do here</h2>
+        <div className="mt-4 grid gap-4 md:grid-cols-3">
+          <article className="panel">
+            <div className="mb-2 text-2xl">🔍</div>
+            <h3 className="font-bold text-ink">Browse projects</h3>
+            <p className="mt-1 text-sm text-muted">Read project ideas posted by other students and join one.</p>
+          </article>
+          <article className="panel">
+            <div className="mb-2 text-2xl">👥</div>
+            <h3 className="font-bold text-ink">Find teammates</h3>
+            <p className="mt-1 text-sm text-muted">Search students by skill (like Java or Figma) and invite them.</p>
+          </article>
+          <article className="panel">
+            <div className="mb-2 text-2xl">📋</div>
+            <h3 className="font-bold text-ink">Plan and finish work</h3>
+            <p className="mt-1 text-sm text-muted">Create tasks, track simple statuses and show your portfolio the end.</p>
+          </article>
         </div>
       </section>
 
-      {/* feature trio */}
-      <section className="mb-14">
-        <div className="mb-7">
-          <p className="eyebrow">HOW IT WORKS</p>
-          <h2 className="h-display text-3xl">Everything you need to collaborate</h2>
-        </div>
-        <div className="grid gap-5 md:grid-cols-3">
-          {[
-            ['⌕', 'Discover projects', 'Explore ideas from students and find work that interests you.'],
-            ['◎', 'Find your people', 'Connect with teammates based on skills and learning goals.'],
-            ['↗', 'Grow together', 'Plan tasks, learn from peers and showcase what you build.'],
-          ].map(([icon, title, text]) => (
-            <article key={title} className="panel">
-              <span className="mb-3 inline-grid h-11 w-11 place-items-center rounded-xl bg-soft text-xl text-brand">{icon}</span>
-              <h3 className="font-display font-bold text-ink">{title}</h3>
-              <p className="mt-1 text-sm text-muted">{text}</p>
-            </article>
-          ))}
-        </div>
+      {/* small footer-ish note */}
+      <section className="panel">
+        <h2 className="text-lg font-bold text-ink">Nothing fancy — just useful</h2>
+        <p className="mt-1 text-sm text-muted">
+          Add your skills in your profile, so teammates searching for "Java" or "React"
+          can actually find you. That's how the matching works!
+        </p>
       </section>
-
-      {/* cta strip */}
-      {!user && (
-        <section className="panel flex flex-wrap items-center justify-between gap-6 bg-gradient-to-r from-[#17243b] to-[#2847bd] text-white">
-          <div>
-            <h2 className="font-display text-2xl font-extrabold">Your next project starts here.</h2>
-            <p className="mt-1 text-white/80">Create a profile and meet students who want to build.</p>
-          </div>
-          <a className="btn bg-white text-brand hover:-translate-y-px" href="/register">Create free account</a>
-        </section>
-      )}
     </>
   )
 }

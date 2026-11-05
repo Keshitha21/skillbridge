@@ -114,11 +114,14 @@ public class ProfileService {
         for (StudentProfile profile : profileRepo.findByVisibility(StudentProfile.Visibility.PUBLIC)) {
             User owner = profile.getUser();
             if (owner.getStatus() != User.Status.ACTIVE) continue;
+            List<UserSkill> owned = skillsByUser.getOrDefault(owner.getId(), List.of());
             boolean matchesQuery = q == null || q.isBlank()
                     || owner.getFullName().toLowerCase().contains(q.toLowerCase())
                     || owner.getEmail().toLowerCase().contains(q.toLowerCase())
-                    || (profile.getInterests() != null && profile.getInterests().toLowerCase().contains(q.toLowerCase()));
-            boolean matchesSkill = skillId == null || skillsByUser.getOrDefault(owner.getId(), List.of()).stream()
+                    || (profile.getInterests() != null && profile.getInterests().toLowerCase().contains(q.toLowerCase()))
+                    // skill-name search: typing "java"/"figma" must find people who HAVE that skill
+                    || owned.stream().anyMatch(us -> us.getSkill().getName().toLowerCase().contains(q.toLowerCase()));
+            boolean matchesSkill = skillId == null || owned.stream()
                     .anyMatch(us -> us.getSkill().getId().equals(skillId));
             if (!matchesQuery || !matchesSkill) continue;
             List<ProfileDtos.SkillTile> tiles = skillsByUser.getOrDefault(owner.getId(), List.of()).stream()

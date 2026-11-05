@@ -1,0 +1,64 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #17243b;
+  --color-muted: #66738a;
+  --color-brand: #3659d9;
+  --color-brand-dark: #2847bd;
+  --color-teal: #16a69a;
+  --color-pagebg: #f6f8fc;
+  --color-surface: #ffffff;
+  --color-line: #e6eaf2;
+  --color-soft: #eef2ff;
+  --font-sans: 'DM Sans', Arial, sans-serif;
+  --font-display: 'Manrope', sans-serif;
+  --shadow-card: 0 12px 35px rgba(27, 45, 87, .07);
+}
+
+/* reusable primitive, registered as a utility so btn-* variants can @apply it */
+@utility btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 10px;
+  padding: 12px 19px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .2s ease;
+  border: 0;
+  text-decoration: none;
+}
+
+@layer components {
+  .btn-primary { @apply btn bg-brand text-white shadow-[0_7px_16px_rgba(54,89,217,.18)] hover:bg-brand-dark hover:-translate-y-px; }
+  .btn-secondary { @apply btn bg-white text-ink border border-line hover:border-brand/40; }
+  .btn-ghost { @apply btn bg-soft text-brand hover:bg-brand/15; }
+  .btn-danger { @apply btn bg-[#fff0f0] text-[#c33] hover:bg-[#ffe0e0]; }
+  .btn-sm { @apply px-[14px] py-[9px] text-xs; }
+  .panel { @apply bg-surface border border-line rounded-2xl p-6 shadow-[0_3px_12px_rgba(30,48,90,.025)]; }
+  .panel-title { @apply font-display font-extrabold text-ink; }
+  .field-label { @apply text-xs font-bold text-[#3b4860]; }
+  .field-input { @apply w-full rounded-[9px] border border-[#dfe4ee] bg-white px-3 py-[11px] text-sm text-ink outline-none focus:border-[#8095ee] focus:ring-[3px] focus:ring-brand/10; }
+  .tag { @apply inline-flex items-center px-[9px] py-[5px] rounded-full bg-soft text-[#405ac0] text-[11px] font-bold; }
+  .tag-teal { @apply bg-[#e6f8f5] text-[#138579]; }
+  .tag-orange { @apply bg-[#fff4e7] text-[#ad6a16]; }
+  .badge { @apply inline-block rounded-full px-[9px] py-1 text-[10px] font-extrabold tracking-wide; }
+  .badge-sky { @apply bg-soft text-[#405ac0]; }
+  .badge-green { @apply bg-[#e5f7ef] text-[#17845c]; }
+  .badge-amber { @apply bg-[#fff4e5] text-[#a96a16]; }
+  .badge-red { @apply bg-[#ffeded] text-[#c34d4d]; }
+  .eyebrow { @apply text-[10px] tracking-[1.8px] font-extrabold text-brand mb-2.5; }
+  .h-display { @apply font-display font-extrabold text-ink tracking-[-1.2px]; }
+  .table-el { @apply w-full text-left text-[13px] border-collapse; }
+  .table-el th { @apply text-left p-3 border-b border-line text-[#7a8599] text-[10px] uppercase tracking-wider font-bold; }
+  .table-el td { @apply text-left p-3 border-b border-line align-middle; }
+}
+
+@layer base {
+  html { scroll-behavior: smooth; }
+  body { @apply bg-pagebg text-ink font-sans text-[15px] leading-relaxed m-0; }
+  a { @apply text-brand no-underline cursor-pointer; }
+}

@@ -1,0 +1,22 @@
+# ---- dependencies / build output ----
+node_modules/
+dist/
+target/
+*.class
+
+# ---- runtime data ----
+backend/uploads/
+*.log
+
+# ---- environment / secrets ----
+.env
+.env.local
+
+# ---- IDE & OS junk ----
+.DS_Store
+.idea/
+.vscode/
+*.iml
+
+# ---- misc ----
+Thumbs.db

@@ -6,37 +6,62 @@ import com.skillbridge.backend.exception.BadRequestException;
 import com.skillbridge.backend.exception.ForbiddenException;
 import com.skillbridge.backend.exception.ResourceNotFoundException;
 import com.skillbridge.backend.repository.FeedbackRepository;
+import com.skillbridge.backend.repository.MentorshipFileRepository;
 import com.skillbridge.backend.repository.MentorshipOfferRepository;
 import com.skillbridge.backend.repository.MentorshipRequestRepository;
+import com.skillbridge.backend.repository.MentorshipTaskRepository;
 import com.skillbridge.backend.repository.SkillRepository;
 import com.skillbridge.backend.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
-/** U8 / F13: peer-learning offers & requests, and feedback after completion. */
+/** U8 / F13: peer-learning offers & requests, feedback after completion, and the
+ *  mentorship workspace — teaching files & learning-plan tasks for participants. */
 @Service
 public class MentorshipService {
 
+    private static final List<String> ALLOWED_EXTENSIONS = List.of(
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv",
+            "png", "jpg", "jpeg", "gif", "webp", "zip");
+
     private final MentorshipOfferRepository offers;
     private final MentorshipRequestRepository mentorshipRequests;
+    private final MentorshipTaskRepository mentorTasks;
+    private final MentorshipFileRepository mentorFiles;
     private final FeedbackRepository feedbackRepo;
     private final SkillRepository skills;
     private final UserRepository users;
     private final NotificationService notifier;
+    private final Path uploadDir;
+    private final long maxBytes;
 
     public MentorshipService(MentorshipOfferRepository offers, MentorshipRequestRepository mentorshipRequests,
                              FeedbackRepository feedbackRepo, SkillRepository skills,
-                             UserRepository users, NotificationService notifier) {
+                             UserRepository users, NotificationService notifier,
+                             MentorshipTaskRepository mentorTasks, MentorshipFileRepository mentorFiles,
+                             @Value("${skillbridge.upload-dir:./uploads}") String uploadDirValue,
+                             @Value("${skillbridge.max-file-size:10485760}") long maxBytes) {
         this.offers = offers;
         this.mentorshipRequests = mentorshipRequests;
+        this.mentorTasks = mentorTasks;
+        this.mentorFiles = mentorFiles;
         this.feedbackRepo = feedbackRepo;
         this.skills = skills;
         this.users = users;
         this.notifier = notifier;
+        this.uploadDir = Paths.get(uploadDirValue).toAbsolutePath().normalize();
+        this.maxBytes = maxBytes;
     }
 
     // ---------- catalog ----------
@@ -251,6 +276,184 @@ public class MentorshipService {
         return feedbackRepo.findByOfferId(offerId).stream().map(this::toFeedbackResponse).toList();
     }
 
+    // ---------- mentorship workspace: participants only (owner + accepted requesters) ----------
+
+    private MentorshipOffer loadOffer(Long offerId) {
+        return offers.findById(offerId).orElseThrow(() -> new ResourceNotFoundException("Learning offer not found."));
+    }
+
+    /** Owner + every accepted learner/mentor of the offer — the workspace audience. */
+    private List<User> participants(MentorshipOffer offer) {
+        List<User> out = new ArrayList<>();
+        out.add(offer.getOwner());
+        mentorshipRequests.findByOfferId(offer.getId()).stream()
+                .filter(mr -> mr.getStatus() == MentorshipRequest.Status.ACCEPTED)
+                .forEach(mr -> out.add(mr.getRequester()));
+        return out;
+    }
+
+    private void requireParticipant(User me, MentorshipOffer offer) {
+        boolean ok = offer.getOwner().getId().equals(me.getId()) || me.getRole() == User.Role.ADMIN
+                || mentorshipRequests.findByOfferId(offer.getId()).stream().anyMatch(mr ->
+                        mr.getStatus() == MentorshipRequest.Status.ACCEPTED
+                        && mr.getRequester().getId().equals(me.getId()));
+        if (!ok) throw new ForbiddenException("Only participants of this learning activity can use its workspace.");
+    }
+
+    private User requireAssignee(User candidate, MentorshipOffer offer) {
+        if (candidate == null || candidate.getId().equals(offer.getOwner().getId())) return candidate;
+        return mentorshipRequests.findByOfferId(offer.getId()).stream()
+                .anyMatch(mr -> mr.getStatus() == MentorshipRequest.Status.ACCEPTED
+                        && mr.getRequester().getId().equals(candidate.getId()))
+                ? candidate : null;
+    }
+
+    // ----- teaching files -----
+
+    @Transactional(readOnly = true)
+    public List<CommonDtos.MentorshipFileView> listFiles(User me, Long offerId) {
+        MentorshipOffer offer = loadOffer(offerId);
+        requireParticipant(me, offer);
+        return mentorFiles.findByOfferIdOrderByCreatedAtDesc(offer.getId()).stream()
+                .map(this::toFileResponse).toList();
+    }
+
+    @Transactional
+    public CommonDtos.MentorshipFileView uploadFile(User me, Long offerId, MultipartFile multipart) {
+        MentorshipOffer offer = loadOffer(offerId);
+        requireParticipant(me, offer);
+        if (multipart == null || multipart.isEmpty()) {
+            throw new BadRequestException("Choose a file to upload.");
+        }
+        if (multipart.getSize() > maxBytes) {
+            throw new BadRequestException("This file exceeds the supported size limit of "
+                    + (maxBytes / (1024 * 1024)) + " MB.");
+        }
+        String original = multipart.getOriginalFilename() == null ? "file" : multipart.getOriginalFilename();
+        String extension = original.substring(original.lastIndexOf('.') + 1).toLowerCase();
+        if (original.lastIndexOf('.') < 0 || !ALLOWED_EXTENSIONS.contains(extension)) {
+            throw new BadRequestException("Unsupported file type: ." + extension
+                    + ". Allowed: " + String.join(", ", ALLOWED_EXTENSIONS));
+        }
+        try {
+            Files.createDirectories(uploadDir);
+        } catch (IOException ex) {
+            throw new BadRequestException("The upload folder is not accessible.");
+        }
+        String storedName = UUID.randomUUID() + "." + extension;
+        try {
+            multipart.transferTo(uploadDir.resolve(storedName).toFile());
+        } catch (IOException ex) {
+            throw new BadRequestException("The upload could not be saved. Please try again.");
+        }
+        MentorshipFile saved = mentorFiles.save(MentorshipFile.builder()
+                .offer(offer)
+                .uploader(me)
+                .originalName(original)
+                .storedName(storedName)
+                .mimeType(multipart.getContentType())
+                .sizeBytes(multipart.getSize())
+                .build());
+
+        String byline = offer.getOwner().getId().equals(me.getId()) ? "The mentor" : me.getFullName();
+        participants(offer).stream()
+                .filter(p -> !p.getId().equals(me.getId()))
+                .forEach(p -> notifier.notify(p, NotificationService.Type.MENTORSHIP_FILE_SHARED,
+                        "Teaching file shared",
+                        byline + " uploaded \"" + original + "\" in \"" + offer.getTitle() + "\".",
+                        "/mentorship"));
+        return toFileResponse(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public Path downloadPath(User me, Long fileId) {
+        MentorshipFile file = mentorFiles.findById(fileId)
+                .orElseThrow(() -> new ResourceNotFoundException("File not found."));
+        requireParticipant(me, file.getOffer());
+        return uploadDir.resolve(file.getStoredName()).toAbsolutePath().normalize();
+    }
+
+    @Transactional(readOnly = true)
+    public MentorshipFile fileMeta(Long fileId) {
+        return mentorFiles.findById(fileId).orElseThrow(() -> new ResourceNotFoundException("File not found."));
+    }
+
+    @Transactional
+    public void deleteFile(User me, Long fileId) {
+        MentorshipFile file = mentorFiles.findById(fileId)
+                .orElseThrow(() -> new ResourceNotFoundException("File not found."));
+        if (!file.getUploader().getId().equals(me.getId())
+                && !file.getOffer().getOwner().getId().equals(me.getId())
+                && me.getRole() != User.Role.ADMIN) {
+            throw new ForbiddenException("Only the uploader or the offer owner can remove this file.");
+        }
+        try {
+            Files.deleteIfExists(uploadDir.resolve(file.getStoredName()));
+        } catch (IOException ignored) { /* row is authoritative; disk cleanup is best effort */ }
+        mentorFiles.delete(file);
+    }
+
+    // ----- learning-plan tasks -----
+
+    @Transactional(readOnly = true)
+    public List<CommonDtos.MentorshipTaskView> listTasks(Long offerId) {
+        MentorshipOffer offer = loadOffer(offerId);
+        return mentorTasks.findByOfferIdOrderByCreatedAtAsc(offer.getId()).stream()
+                .map(this::toTaskResponse).toList();
+    }
+
+    @Transactional
+    public CommonDtos.MentorshipTaskView createTask(User me, Long offerId, CommonDtos.CreateMentorshipTask request) {
+        MentorshipOffer offer = loadOffer(offerId);
+        requireParticipant(me, offer);
+        User assignee = null;
+        if (request.assigneeId() != null) {
+            User candidate = users.findById(request.assigneeId())
+                    .orElseThrow(() -> new BadRequestException("Assignee not found."));
+            assignee = requireAssignee(candidate, offer);
+            if (assignee == null) throw new BadRequestException("Assignee must be a participant of this activity.");
+        }
+        MentorshipTask saved = mentorTasks.save(MentorshipTask.builder()
+                .offer(offer)
+                .title(request.title().trim())
+                .assignee(assignee)
+                .createdBy(me)
+                .build());
+        if (assignee != null && !assignee.getId().equals(me.getId())) {
+            notifier.notify(assignee, NotificationService.Type.MENTORSHIP_TASK_ASSIGNED,
+                    "New learning task assigned to you",
+                    me.getFullName() + " added \"" + saved.getTitle() + "\" in \"" + offer.getTitle() + "\".",
+                    "/mentorship");
+        }
+        return toTaskResponse(saved);
+    }
+
+    @Transactional
+    public CommonDtos.MentorshipTaskView updateTaskStatus(User me, Long taskId, MentorshipTask.Status next) {
+        MentorshipTask task = mentorTasks.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Learning task not found."));
+        if (next == null) throw new BadRequestException("Provide the new task status.");
+        requireParticipant(me, task.getOffer());
+        boolean isAssignedParticipant = task.getAssignee() != null && task.getAssignee().getId().equals(me.getId());
+        boolean isOwner = task.getOffer().getOwner().getId().equals(me.getId())
+                || me.getRole() == User.Role.ADMIN;
+        boolean sharedUnassignedTask = task.getAssignee() == null;
+        if (!isAssignedParticipant && !isOwner && !sharedUnassignedTask) {
+            throw new ForbiddenException("Only the assigned participant or the offer owner can update this task.");
+        }
+        task.setStatus(next);
+        mentorTasks.save(task);
+        participants(task.getOffer()).stream()
+                .filter(p -> !p.getId().equals(me.getId()))
+                .forEach(p -> notifier.notify(p, NotificationService.Type.MENTORSHIP_TASK_UPDATED,
+                        "Learning task updated",
+                        me.getFullName() + " moved \"" + task.getTitle() + "\" to "
+                                + next.name().replace('_', ' ').toLowerCase()
+                                + " in \"" + task.getOffer().getTitle() + "\".",
+                        "/mentorship"));
+        return toTaskResponse(task);
+    }
+
     // ---------- mapping ----------
 
     private CommonDtos.OfferResponse toResponse(MentorshipOffer o) {
@@ -267,6 +470,7 @@ public class MentorshipService {
     private CommonDtos.MentorshipRequestResponse toResponse(MentorshipRequest mr) {
         return new CommonDtos.MentorshipRequestResponse(mr.getId(), mr.getOffer().getId(), mr.getOffer().getTitle(),
                 mr.getOffer().getOwner().getFullName(), mr.getOffer().getOwner().getId(),
+                mr.getOffer().getType(),
                 mr.getRequester().getId(), mr.getRequester().getFullName(), mr.getMessage(),
                 mr.getStatus(), mr.getCreatedAt());
     }
@@ -275,5 +479,19 @@ public class MentorshipService {
         return new CommonDtos.FeedbackResponse(f.getId(), f.getOffer().getId(), f.getFromUser().getId(),
                 f.getFromUser().getFullName(), f.getToUser().getId(), f.getToUser().getFullName(),
                 f.getRating(), f.getComment(), f.getCreatedAt());
+    }
+
+    private CommonDtos.MentorshipTaskView toTaskResponse(MentorshipTask t) {
+        return new CommonDtos.MentorshipTaskView(t.getId(), t.getOffer().getId(), t.getTitle(), t.getStatus(),
+                t.getAssignee() == null ? null : t.getAssignee().getId(),
+                t.getAssignee() == null ? null : t.getAssignee().getFullName(),
+                t.getCreatedBy().getId(), t.getCreatedBy().getFullName(),
+                t.getCreatedAt(), t.getUpdatedAt());
+    }
+
+    private CommonDtos.MentorshipFileView toFileResponse(MentorshipFile f) {
+        return new CommonDtos.MentorshipFileView(f.getId(), f.getOffer().getId(), f.getUploader().getId(),
+                f.getUploader().getFullName(), f.getOriginalName(), f.getMimeType(),
+                f.getSizeBytes(), f.getCreatedAt());
     }
 }

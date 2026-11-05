@@ -1,18 +1,28 @@
 package com.skillbridge.backend.controller;
 
 import com.skillbridge.backend.dto.CommonDtos;
+import com.skillbridge.backend.entity.MentorshipFile;
 import com.skillbridge.backend.entity.MentorshipOffer;
+import com.skillbridge.backend.entity.MentorshipTask;
 import com.skillbridge.backend.entity.User;
 import com.skillbridge.backend.service.MentorshipService;
 import jakarta.validation.Valid;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.net.MalformedURLException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 
-/** U8 / F13: peer-learning offers & requests + feedback (F13 tail). */
+/** U8 / F13: peer-learning offers & requests + feedback + mentorship workspace
+ *  (teaching files & learning-plan tasks). */
 @RestController
 public class MentorshipController {
 
@@ -102,5 +112,64 @@ public class MentorshipController {
     @GetMapping("/api/feedback/received")
     public ResponseEntity<List<CommonDtos.FeedbackResponse>> feedbackReceived(@AuthenticationPrincipal User me) {
         return ResponseEntity.ok(mentorship.feedbackFor(me.getId()));
+    }
+
+    // ---------- workspace: teaching files ----------
+
+    @GetMapping("/api/mentorship/{offerId}/files")
+    public ResponseEntity<List<CommonDtos.MentorshipFileView>> files(@AuthenticationPrincipal User me,
+                                                                     @PathVariable Long offerId) {
+        return ResponseEntity.ok(mentorship.listFiles(me, offerId));
+    }
+
+    @PostMapping(value = "/api/mentorship/{offerId}/files", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<CommonDtos.MentorshipFileView> upload(@AuthenticationPrincipal User me,
+                                                                @PathVariable Long offerId,
+                                                                @RequestPart("file") MultipartFile file) {
+        return ResponseEntity.ok(mentorship.uploadFile(me, offerId, file));
+    }
+
+    @GetMapping("/api/mentorship/files/{fileId}/download")
+    public ResponseEntity<Resource> downloadFile(@AuthenticationPrincipal User me, @PathVariable Long fileId) {
+        Path path = mentorship.downloadPath(me, fileId);
+        MentorshipFile meta = mentorship.fileMeta(fileId);
+        try {
+            Resource resource = new org.springframework.core.io.UrlResource(path.toUri());
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=\"" + meta.getOriginalName() + "\"")
+                    .body(resource);
+        } catch (MalformedURLException ex) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    @DeleteMapping("/api/mentorship/files/{fileId}")
+    public ResponseEntity<CommonDtos.OkResponse> deleteFile(@AuthenticationPrincipal User me, @PathVariable Long fileId) {
+        mentorship.deleteFile(me, fileId);
+        return ResponseEntity.ok(new CommonDtos.OkResponse(true, "File removed."));
+    }
+
+    // ---------- workspace: learning-plan tasks ----------
+
+    @GetMapping("/api/mentorship/{offerId}/tasks")
+    public ResponseEntity<List<CommonDtos.MentorshipTaskView>> tasks(@AuthenticationPrincipal User me,
+                                                                     @PathVariable Long offerId) {
+        return ResponseEntity.ok(mentorship.listTasks(offerId));
+    }
+
+    @PostMapping("/api/mentorship/{offerId}/tasks")
+    public ResponseEntity<CommonDtos.MentorshipTaskView> createTask(@AuthenticationPrincipal User me,
+                                                                    @PathVariable Long offerId,
+                                                                    @Valid @RequestBody CommonDtos.CreateMentorshipTask body) {
+        return ResponseEntity.ok(mentorship.createTask(me, offerId, body));
+    }
+
+    @PostMapping("/api/mentorship/tasks/{taskId}/status")
+    public ResponseEntity<CommonDtos.MentorshipTaskView> taskStatus(@AuthenticationPrincipal User me,
+                                                                    @PathVariable Long taskId,
+                                                                    @Valid @RequestBody CommonDtos.MentorshipTaskStatus body) {
+        return ResponseEntity.ok(mentorship.updateTaskStatus(me, taskId, body.status()));
     }
 }

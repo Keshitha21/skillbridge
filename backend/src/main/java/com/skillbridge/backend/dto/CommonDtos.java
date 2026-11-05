@@ -3,6 +3,7 @@ package com.skillbridge.backend.dto;
 import com.skillbridge.backend.entity.JoinRequest;
 import com.skillbridge.backend.entity.MentorshipOffer;
 import com.skillbridge.backend.entity.MentorshipRequest;
+import com.skillbridge.backend.entity.MentorshipTask;
 import com.skillbridge.backend.entity.Milestone;
 import com.skillbridge.backend.entity.PortfolioItem;
 import com.skillbridge.backend.entity.Report;
@@ -119,12 +120,26 @@ public final class CommonDtos {
 
     public record CreateMentorshipRequest(@Size(max = 500) String message) {}
     public record MentorshipRequestResponse(Long id, Long offerId, String offerTitle, String offerOwnerName,
-                                            Long offerOwnerId, Long requesterId, String requesterName,
+                                            Long offerOwnerId, MentorshipOffer.Type offerType,
+                                            Long requesterId, String requesterName,
                                             String message, MentorshipRequest.Status status, Instant createdAt) {}
 
     public record CreateFeedback(@NotNull @Min(1) @Max(5) int rating, @Size(max = 600) String comment) {}
     public record FeedbackResponse(Long id, Long offerId, Long fromUserId, String fromName,
                                    Long toUserId, String toName, int rating, String comment, Instant createdAt) {}
+
+    // ---------- mentorship workspace: teaching files & learning-plan tasks (U8/F13) ----------
+
+    public record CreateMentorshipTask(@NotBlank @Size(max = 150) String title, Long assigneeId) {}
+    public record MentorshipTaskStatus(@NotNull MentorshipTask.Status status) {}
+
+    public record MentorshipTaskView(Long id, Long offerId, String title, MentorshipTask.Status status,
+                                     Long assigneeId, String assigneeName,
+                                     Long createdById, String createdByName,
+                                     Instant createdAt, Instant updatedAt) {}
+
+    public record MentorshipFileView(Long id, Long offerId, Long uploaderId, String uploaderName,
+                                     String fileName, String mimeType, Long sizeBytes, Instant createdAt) {}
 
     // ---------- portfolio ----------
     public record CreatePortfolioItem(@NotBlank @Size(max = 150) String title,

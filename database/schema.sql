@@ -282,6 +282,33 @@ CREATE TABLE mentorship_requests (
   CONSTRAINT fk_mr_user  FOREIGN KEY (requester_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE mentorship_tasks (
+  id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+  offer_id      BIGINT NOT NULL,
+  title         VARCHAR(150) NOT NULL,
+  status        ENUM('TODO','IN_PROGRESS','DONE') NOT NULL DEFAULT 'TODO',
+  assignee_id   BIGINT,
+  created_by_id BIGINT NOT NULL,
+  created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at    TIMESTAMP NULL,
+  CONSTRAINT fk_mt_offer    FOREIGN KEY (offer_id) REFERENCES mentorship_offers(id) ON DELETE CASCADE,
+  CONSTRAINT fk_mt_assignee FOREIGN KEY (assignee_id) REFERENCES users(id),
+  CONSTRAINT fk_mt_creator  FOREIGN KEY (created_by_id) REFERENCES users(id)
+);
+
+CREATE TABLE mentorship_files (
+  id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+  offer_id      BIGINT NOT NULL,
+  uploader_id   BIGINT NOT NULL,
+  original_name VARCHAR(255) NOT NULL,
+  stored_name   VARCHAR(255) NOT NULL UNIQUE,
+  mime_type     VARCHAR(120),
+  size_bytes    BIGINT,
+  created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_mf_offer FOREIGN KEY (offer_id) REFERENCES mentorship_offers(id) ON DELETE CASCADE,
+  CONSTRAINT fk_mf_user  FOREIGN KEY (uploader_id) REFERENCES users(id)
+);
+
 CREATE TABLE feedbacks (
   id          BIGINT AUTO_INCREMENT PRIMARY KEY,
   offer_id    BIGINT NOT NULL,

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { PageHeading, Panel, StatusBadge, Field, EmptyState, useToast, Spinner } from '../components'
 import { get, post, put } from '../api'
+import { useAuth } from '../auth'
 
 const NEXT = {
   TODO: ['IN_PROGRESS', 'BLOCKED'],
@@ -47,6 +48,13 @@ export default function Tasks() {
   }, [activeProject, rows, managed, mine])
 
   const byProject = (t) => projectIds.find(p => p.id === t.projectId)
+  const { user: me } = useAuth()
+
+  // who can move a task (matches the backend rule in TaskService.updateStatus):
+  // the assignee themself, or the project owner/manager. Everyone else is read-only.
+  const roleOf = (t) => byProject(t)?.myRole
+  const canMove = (t) => roleOf(t) === 'OWNER' || roleOf(t) === 'MANAGER'
+    || (t.assigneeId != null && t.assigneeId === me?.id)
 
   const move = async (task, status, blockerNote) => {
     try {
@@ -155,17 +163,29 @@ export default function Tasks() {
                       <div className="text-xs text-muted">{t.assigneeName ? `👤 ${t.assigneeName}` : '🪹 unassigned'}{t.dueDate ? ` · ⏰ ${t.dueDate}` : ''}</div>
                       {t.blockerNote && <div className="mt-1 text-[11px] text-[#c34d4d]">🚧 {t.blockerNote}</div>}
                       <div className="mt-2 flex flex-wrap gap-1.5">
-                        {(t.status === 'READY_FOR_REVIEW')
-                          ? <button className="btn-primary btn-sm" onClick={() => setReview(t)}>Review</button>
-                          : NEXT[t.status]?.map(s => (
+                        {t.status === 'READY_FOR_REVIEW' ? (
+                          // only the project owner/manager makes the review decision
+                          roleOf(t) === 'OWNER' || roleOf(t) === 'MANAGER'
+                            ? <button className="btn-primary btn-sm" onClick={() => setReview(t)}>Review</button>
+                            : <span className="text-[11px] text-muted">⏳ awaiting review</span>
+                        ) : canMove(t) ? (
+                          // assignee or owner/manager: show the legal next statuses
+                          NEXT[t.status]?.map(s => (
                             <button key={s} className="btn-ghost btn-sm" onClick={() => {
                               if (s === 'BLOCKED') {
                                 const note = prompt('Describe the blocker:', '')
                                 if (note) move(t, s, note)
                               } else move(t, s)
                             }}>{s.replace(/_/g, ' ').toLowerCase()}</button>
-                          ))}
-                        <button className="btn-secondary btn-sm" onClick={() => openComments(t)}>💬 {t.status === 'READY_FOR_REVIEW' ? '' : ''}Comments</button>
+                          ))
+                        ) : (
+                          <span className="text-[11px] text-muted">
+                            🔒 {t.assigneeName
+                                  ? `only ${t.assigneeName} or a manager can move this`
+                                  : 'unassigned — only a manager can move or take this'}
+                          </span>
+                        )}
+                        <button className="btn-secondary btn-sm" onClick={() => openComments(t)}>💬 Comments</button>
                         {projectIds.find(p => p.id === t.projectId)?.myRole === 'OWNER' || projectIds.find(p => p.id === t.projectId)?.myRole === 'MANAGER'
                           ? <button className="btn-secondary btn-sm" onClick={() => setForm(t)}>edit</button>
                           : null}
